@@ -1,0 +1,128 @@
+<?php
+require 'config.php';
+
+function send_msg($message) {
+
+    $token = "YOUR_TOKEN_HERE";
+
+    $data = [
+        "text" => $message,
+        "chat_id" => "telegram_chat_id",
+    ];
+
+    $result = file_get_contents('https://api.telegram.org/bot' . $token . '/sendMessage?' . http_build_query($data) . '');
+
+    return json_decode($result, true);
+}
+
+function request() {
+    if (!$init = curl_init()) {
+        return ["result" => null, "error" => ["code" => null, "message" => "Initalize a cURL session"]];
+    }
+
+    $options = [
+        CURLOPT_URL => 'https://api.orhanaydogdu.com.tr/deprem/kandilli/live',
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_ENCODING => '',
+        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_TIMEOUT => 0,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        CURLOPT_CUSTOMREQUEST => 'GET',
+    ];
+
+    if (!curl_setopt_array($init, $options)) {
+        return ["result" => null, "error" => ["code" => null, "message" => "Set multiple options for a cURL transfer"]];
+    }
+
+    if (!$exec = curl_exec($init)) {
+        echo curl_error($init);
+        return ["result" => null, "error" => ["code" => null, "message" => "Perform a cURL session"]];
+    }
+    curl_close($init);
+    return json_decode($exec, true);
+}
+
+$all_eq = request();
+
+foreach ($all_eq["result"] as $eq) {
+    $data = $eq["title"];
+    $data .= $eq["date"];
+    $data .= $eq["lokasyon"];
+    $data .= $eq["lat"];
+    $data .= $eq["lng"];
+    $data .= $eq["mag"];
+    $data .= $eq["depth"];
+    $data .= $eq["coordinates"][0];
+    $data .= $eq["coordinates"][1];
+    $data .= $eq["location_properties"]["closestCity"]["name"];
+    $data .= $eq["location_properties"]["closestCity"]["distance"];
+    $data .= $eq["location_properties"]["epiCenter"]["name"];
+    $data .= $eq["rev"];
+    $data .= $eq["date_stamp"];
+    $data .= $eq["date_day"];
+    $data .= $eq["date_hour"];
+    $data .= $eq["timestamp"];
+    $data .= $eq["location_tz"];
+
+    $hash = hash("sha256", $data);
+
+    $date = $eq["date_day"] . " " . $eq["date_hour"];
+
+    $result = mysqli_query($open, "SELECT * FROM `eq_hash` WHERE `hash` = '" . $hash . "' ");
+    if (!$result) {
+        exit(json_encode(["result" => null, "error" => "An error occured while selecting data from database."]));
+    }
+
+    $n = mysqli_num_rows($result);
+
+    if ($n >= 1) {
+        exit(json_encode(["result" => NULL, "error" => "There is no new earthquake."]));
+    }
+
+    $title = $eq["title"];
+    $date = $eq["date"];
+    $location = $eq["lokasyon"];
+    $magnitude = $eq["mag"];
+    $depth = $eq["depth"];
+    $lat = $eq["lat"];
+    $lng = $eq["lng"];
+
+    $maps = "https://www.google.com/maps?q=" . $lng . "," . $lat . "&ll=" . $lng . "," . $lat . "&z=8";
+
+    $message = "NEW EARTHQUAKE ! \n";
+    $message .= "Location: " . $location . ' - ' . $maps . "\n";
+    $message .= "Date - Time: " .  $date . "\n";
+    $message .= "Magnitude: " .  $magnitude . "\n";
+    $message .= "Depth: " . $depth;
+
+    $result = mysqli_query($open, "INSERT INTO `eq_hash` (`hash`, `message`, `date`) VALUES ('" . $hash . "', '" . $message . "', '" . $date . "') ");
+    if (!$result) {
+        exit(json_encode(["result" => null, "error" => "An error occured while inserting data to database."]));
+    }
+
+    $last_id = mysqli_insert_id($open);
+
+    $result = mysqli_query($open, "SELECT `id`, `message` FROM `eq_hash` WHERE `id` = '" . $last_id . "' ORDER BY `date` ASC ");
+    if (!$result) {
+        exit(json_encode(["result" => null, "error" => "An error occured while selecting data from database."]));
+    }
+
+    $eq_message = mysqli_fetch_assoc($result);
+
+    $send_msg = send_msg($eq_message["message"]);
+
+    if ($send_msg["ok"] == true) {
+
+        $result = mysqli_query($open, "INSERT INTO `telegram_msg` (`message_id`, `date`, `text`, `status`, `error`) VALUES ('" . $send_msg["result"]["message_id"] . "', '" . $date . "', '" . $send_msg["result"]["text"] . "', '" . $send_msg["ok"] . "', NULL) ");
+        if (!$result) {
+            exit(json_encode(["result" => null, "error" => "An error occured while inserting data to database."]));
+        }
+    } else {
+
+        $result = mysqli_query($open, "INSERT INTO `errors` (`message_id`, `message`) VALUES ('" . $eq_message["id"] . "', 'An error occurred while sening message.') ");
+        if (!$result) {
+            exit(json_encode(["result" => null, "error" => "An error occured while inserting data to database."]));
+        }
+    }
+}
