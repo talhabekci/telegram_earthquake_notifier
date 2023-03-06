@@ -48,26 +48,19 @@ $all_eq = request();
 foreach ($all_eq["result"] as $eq) {
     $data = $eq["title"];
     $data .= $eq["date"];
-    $data .= $eq["lokasyon"];
-    $data .= $eq["lat"];
-    $data .= $eq["lng"];
+    $data .= $eq["geojson"]["coordinates"][0];
+    $data .= $eq["geojson"]["coordinates"][1];
     $data .= $eq["mag"];
     $data .= $eq["depth"];
-    $data .= $eq["coordinates"][0];
-    $data .= $eq["coordinates"][1];
     $data .= $eq["location_properties"]["closestCity"]["name"];
+    $data .= $eq["location_properties"]["closestCity"]["cityCode"];
     $data .= $eq["location_properties"]["closestCity"]["distance"];
-    $data .= $eq["location_properties"]["epiCenter"]["name"];
-    $data .= $eq["rev"];
-    $data .= $eq["date_stamp"];
-    $data .= $eq["date_day"];
-    $data .= $eq["date_hour"];
+    $data .= $eq["location_properties"]["closestCity"]["population"];
+    $data .= $eq["date_time"];
     $data .= $eq["timestamp"];
     $data .= $eq["location_tz"];
 
     $hash = hash("sha256", $data);
-
-    $date = $eq["date_day"] . " " . $eq["date_hour"];
 
     $result = mysqli_query($open, "SELECT * FROM `eq_hash` WHERE `hash` = '" . $hash . "' ");
     if (!$result) {
@@ -82,16 +75,15 @@ foreach ($all_eq["result"] as $eq) {
 
     $title = $eq["title"];
     $date = $eq["date"];
-    $location = $eq["lokasyon"];
     $magnitude = $eq["mag"];
     $depth = $eq["depth"];
-    $lat = $eq["lat"];
-    $lng = $eq["lng"];
+    $lat = $eq["geojson"]["coordinates"][0];
+    $lng = $eq["geojson"]["coordinates"][1];
 
     $maps = "https://www.google.com/maps?q=" . $lng . "," . $lat . "&ll=" . $lng . "," . $lat . "&z=8";
 
     $message = "NEW EARTHQUAKE ! \n";
-    $message .= "Location: " . $location . ' - ' . $maps . "\n";
+    $message .= "Location: " . $title . ' - ' . $maps . "\n";
     $message .= "Date - Time: " .  $date . "\n";
     $message .= "Magnitude: " .  $magnitude . "\n";
     $message .= "Depth: " . $depth;
